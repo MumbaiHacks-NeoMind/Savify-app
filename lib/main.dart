@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'theme/app_theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'providers/transaction_provider.dart';
@@ -27,24 +27,8 @@ class SavifyApp extends StatelessWidget {
           return MaterialApp(
             title: 'Savify - Finance Tracker',
             debugShowCheckedModeBanner: false,
-            theme: ThemeData(
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: const Color(0xFF6C63FF),
-                brightness: Brightness.light,
-              ),
-              useMaterial3: true,
-              textTheme: GoogleFonts.poppinsTextTheme(),
-            ),
-            darkTheme: ThemeData(
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: const Color(0xFF6C63FF),
-                brightness: Brightness.dark,
-              ),
-              useMaterial3: true,
-              textTheme: GoogleFonts.poppinsTextTheme(
-                ThemeData.dark().textTheme,
-              ),
-            ),
+            theme: AppTheme.light(),
+            darkTheme: AppTheme.dark(),
             themeMode: ThemeMode.system,
             home: authProvider.isLoading
                 ? const Scaffold(

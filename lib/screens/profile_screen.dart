@@ -23,7 +23,7 @@ class ProfileScreen extends StatelessWidget {
                   radius: 32,
                   backgroundColor: Theme.of(
                     context,
-                  ).colorScheme.primary.withOpacity(0.1),
+                  ).colorScheme.primary.withValues(alpha: 0.1),
                   child: Icon(
                     Icons.person,
                     size: 36,
@@ -93,11 +93,9 @@ class ProfileScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             FilledButton.tonal(
-              onPressed: () {
-                _confirmLogout(context);
-              },
+              onPressed: () => _confirmLogout(context),
               style: FilledButton.styleFrom(
-                backgroundColor: Colors.red.withOpacity(0.1),
+                backgroundColor: Colors.red.withValues(alpha: 0.1),
                 foregroundColor: Colors.red[700],
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
