@@ -47,6 +47,8 @@ We will launch using a freemium model, offering core finance tracking for free a
 
 Revenue will primarily come from subscription plans, followed by affiliate commissions on recommended financial products like insurance, mutual funds, or credit optimization tools. Additional revenue sources include API services for fintech platforms, personalized financial coaching sessions, and potential white-label licensing to financial institutions.
 
+---
+
 ## Features ✨
 
 ### Core Functionality
