@@ -2,6 +2,20 @@
 
 A modern Flutter finance tracker app powered by AI agents for intelligent financial management and insights.
 
+---
+
+## Demo Video Link
+
+[YouTube Video Link](https://youtu.be/TGuGiL23uPU)
+
+---
+
+## Frontend Repository
+
+Savify-Frontend: [GitHub Link](https://github.com/MumbaiHacks-NeoMind/Savify-Website.git)
+
+---
+
 ## Features ✨
 
 ### Core Functionality
@@ -24,6 +38,8 @@ A modern Flutter finance tracker app powered by AI agents for intelligent financ
 - **Date Selection**: Choose transaction dates with an integrated date picker
 - **Real-time Updates**: All changes reflect immediately across the app
 
+---
+
 ## Screenshots 📱
 
 The app includes three main screens:
@@ -40,6 +56,8 @@ The app includes three main screens:
 - **Charts**: FL Chart
 - **AI Integration**: Google Generative AI (Gemini)
 - **UI/UX**: Material Design 3, Google Fonts
+
+---
 
 ## Getting Started 🚀
 
@@ -65,6 +83,8 @@ flutter pub get
 flutter run
 ```
 
+---
+
 ## Project Structure 📁
 
 ```
@@ -89,6 +109,8 @@ lib/
 └── services/                 # Business logic
     └── ai_agent_service.dart
 ```
+
+---
 
 ## How It Works 🔍
 
@@ -122,9 +144,7 @@ All data is stored locally using SharedPreferences, ensuring:
 - [ ] Financial goal setting and tracking
 - [ ] Bill reminders and notifications
 
-## License 📄
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+---
 
 ## Contact 📧
 
