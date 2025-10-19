@@ -1,89 +1,156 @@
-import 'dart:math';
+import 'dart:convert';
+import 'dart:io' show Platform;
+import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 import '../models/transaction.dart';
 import '../models/ai_insight.dart';
+import '../models/financial_ai_models.dart';
+import '../config/ai_config.dart';
 
 /// AI Agent Service for generating financial insights and recommendations
-/// This is a mock implementation that simulates AI behavior
-/// In production, this would integrate with actual AI services like Google Gemini
+/// Integrated with Financial AI System V2 backend
 class AIAgentService {
-  final Random _random = Random();
+  // Backend API configuration
+  static String get _baseUrl => AIConfig.activeBackendUrl;
+  static Duration get _timeout => AIConfig.requestTimeout;
+
+  // User context for personalized responses
+  String _userContext = 'Individual user managing personal finances';
+  
+  // Simple response cache
+  final Map<String, ChatResponse> _responseCache = {};
+
+  /// Update user context for personalized AI responses
+  void setUserContext(String context) {
+    _userContext = context;
+  }
+
+  /// Send a chat message to the AI system
+  Future<ChatResponse> sendChatMessage({
+    required String message,
+    String? userContext,
+    List<ExpenditureEntry>? expenditureData,
+  }) async {
+    // Validate input
+    if (message.trim().isEmpty) {
+      return ChatResponse(
+        response: 'Please enter a valid message.',
+        queryType: 'error',
+        error: 'Empty message',
+      );
+    }
+    
+    try {
+      final request = ChatRequest(
+        message: message,
+        userContext: userContext ?? _userContext,
+        expenditureData: expenditureData,
+      );
+
+      final response = await http
+          .post(
+            _resolveEndpoint(AIConfig.chatEndpoint),
+            headers: AIConfig.headers,
+            body: json.encode(request.toJson()),
+          )
+          .timeout(_timeout);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return ChatResponse.fromJson(data);
+      } else {
+        return ChatResponse(
+          response:
+              'Failed to get AI response. Server returned ${response.statusCode}',
+          queryType: 'error',
+          error: 'HTTP ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error in sendChatMessage: $e');
+      return ChatResponse(
+        response:
+            'Sorry, I\'m having trouble connecting to the AI service. Please check if the backend is running.',
+        queryType: 'error',
+        error: e.toString(),
+      );
+    }
+  }
+
+  /// Convert transactions to expenditure entries
+  List<ExpenditureEntry> _transactionsToExpenditureEntries(
+    List<Transaction> transactions,
+  ) {
+    return transactions
+        .where((t) => t.type == TransactionType.expense)
+        .map(
+          (t) => ExpenditureEntry(
+            amount: t.amount,
+            category: categoryToString(t.category),
+            description: t.title,
+            date: t.date.toIso8601String(),
+          ),
+        )
+        .toList();
+  }
 
   /// Generate financial insights based on transaction history
   Future<List<AIInsight>> generateInsights(
     List<Transaction> transactions,
     double monthlyBudget,
   ) async {
-    // Simulate AI processing delay
-    await Future.delayed(const Duration(seconds: 1));
+    if (transactions.isEmpty) {
+      return [];
+    }
 
     final insights = <AIInsight>[];
 
-    if (transactions.isEmpty) {
-      return insights;
-    }
-
-    // Calculate spending patterns
-    final totalExpenses = transactions
-        .where((t) => t.type == TransactionType.expense)
-        .fold(0.0, (sum, t) => sum + t.amount);
-
-    final totalIncome = transactions
-        .where((t) => t.type == TransactionType.income)
-        .fold(0.0, (sum, t) => sum + t.amount);
-
-    // Spending analysis
-    if (totalExpenses > totalIncome * 0.8) {
-      insights.add(
-        AIInsight(
-          id: 'insight_${DateTime.now().millisecondsSinceEpoch}_1',
-          title: '⚠️ High Spending Alert',
-          description:
-              'Your expenses are ${((totalExpenses / totalIncome) * 100).toStringAsFixed(1)}% of your income. Consider reducing discretionary spending.',
-          type: 'warning',
-          createdAt: DateTime.now(),
-        ),
-      );
-    }
-
-    // Category analysis
-    final categorySpending = <Category, double>{};
-    for (var transaction in transactions.where(
-      (t) => t.type == TransactionType.expense,
-    )) {
-      categorySpending[transaction.category] =
-          (categorySpending[transaction.category] ?? 0) + transaction.amount;
-    }
-
-    if (categorySpending.isNotEmpty) {
-      final topCategory = categorySpending.entries.reduce(
-        (a, b) => a.value > b.value ? a : b,
+    try {
+      // Get expenditure analysis from AI
+      final expenditureData = _transactionsToExpenditureEntries(transactions);
+      final response = await sendChatMessage(
+        message: 'Analyze my spending and provide insights',
+        expenditureData: expenditureData,
       );
 
-      insights.add(
-        AIInsight(
-          id: 'insight_${DateTime.now().millisecondsSinceEpoch}_2',
-          title: '📊 Spending Pattern Detected',
-          description:
-              'Your highest spending category is ${categoryToString(topCategory.key)} at \$${topCategory.value.toStringAsFixed(2)}. Consider setting a budget for this category.',
-          type: 'tip',
-          createdAt: DateTime.now(),
-        ),
-      );
-    }
+      // Create insight from AI response
+      if (!response.hasError) {
+        insights.add(
+          AIInsight(
+            id: 'insight_${DateTime.now().millisecondsSinceEpoch}',
+            title: _getInsightTitle(response.queryType),
+            description: response.response,
+            type: _getInsightType(response.queryType),
+            createdAt: DateTime.now(),
+          ),
+        );
 
-    // Savings suggestion
-    if (totalIncome > totalExpenses) {
-      final savings = totalIncome - totalExpenses;
-      insights.add(
-        AIInsight(
-          id: 'insight_${DateTime.now().millisecondsSinceEpoch}_3',
-          title: '💰 Great Job Saving!',
-          description:
-              'You saved \$${savings.toStringAsFixed(2)} this month. Consider investing ${(savings * 0.3).toStringAsFixed(2)} of it for long-term growth.',
-          type: 'suggestion',
-          createdAt: DateTime.now(),
-        ),
-      );
+        // If there's structured data, create additional insights
+        if (response.data != null && response.isExpenditureAnalysis) {
+          final analysis = ExpenditureAnalysis.fromJson(response.data!);
+
+          if (analysis.recommendations != null &&
+              analysis.recommendations!.isNotEmpty) {
+            for (
+              var i = 0;
+              i < analysis.recommendations!.length && i < 3;
+              i++
+            ) {
+              insights.add(
+                AIInsight(
+                  id: 'insight_${DateTime.now().millisecondsSinceEpoch}_$i',
+                  title: '💡 AI Recommendation',
+                  description: analysis.recommendations![i],
+                  type: 'suggestion',
+                  createdAt: DateTime.now(),
+                ),
+              );
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error generating insights: $e');
     }
 
     return insights;
@@ -94,44 +161,179 @@ class AIAgentService {
     String query,
     List<Transaction> context,
   ) async {
-    await Future.delayed(const Duration(milliseconds: 800));
+    try {
+      // Include recent transactions as context if relevant
+      List<ExpenditureEntry>? expenditureData;
+      if (query.toLowerCase().contains('spend') ||
+          query.toLowerCase().contains('expense') ||
+          query.toLowerCase().contains('budget')) {
+        expenditureData = _transactionsToExpenditureEntries(context);
+      }
 
-    // Mock AI responses based on query keywords
-    if (query.toLowerCase().contains('save')) {
-      return 'Based on your spending patterns, I recommend the 50/30/20 rule: allocate 50% of income to needs, 30% to wants, and 20% to savings and debt repayment.';
-    } else if (query.toLowerCase().contains('budget')) {
-      return 'Your current spending shows room for optimization. Try setting category-specific budgets and use the app to track your progress throughout the month.';
-    } else if (query.toLowerCase().contains('invest')) {
-      return 'Before investing, ensure you have an emergency fund covering 3-6 months of expenses. Then consider diversified investments aligned with your risk tolerance.';
-    } else {
-      return 'I can help you with budgeting, saving strategies, and expense tracking. What specific aspect of your finances would you like to improve?';
+      final response = await sendChatMessage(
+        message: query,
+        expenditureData: expenditureData,
+      );
+
+      return response.response;
+    } catch (e) {
+      debugPrint('Error getting advice: $e');
+      return 'Sorry, I encountered an error processing your request. Please try again.';
     }
+  }
+
+  /// Analyze expenditure with detailed breakdown
+  Future<Map<String, dynamic>> analyzeExpenditure(
+    List<Transaction> transactions,
+  ) async {
+    if (transactions.isEmpty) {
+      return {
+        'total': 0.0,
+        'breakdown': <String, double>{},
+        'message': 'No transactions to analyze',
+      };
+    }
+
+    try {
+      final expenditureData = _transactionsToExpenditureEntries(transactions);
+      final response = await sendChatMessage(
+        message: 'Provide detailed expenditure analysis',
+        expenditureData: expenditureData,
+      );
+
+      if (response.isExpenditureAnalysis && response.data != null) {
+        final analysis = ExpenditureAnalysis.fromJson(response.data!);
+        return {
+          'total': analysis.totalSpending,
+          'breakdown': analysis.categoryBreakdown,
+          'message': response.response,
+          'recommendations': analysis.recommendations ?? [],
+        };
+      }
+
+      return {
+        'total': 0.0,
+        'breakdown': <String, double>{},
+        'message': response.response,
+      };
+    } catch (e) {
+      debugPrint('Error analyzing expenditure: $e');
+      return {
+        'total': 0.0,
+        'breakdown': <String, double>{},
+        'message': 'Error analyzing expenditure',
+      };
+    }
+  }
+
+  /// Get investment advice
+  Future<String> getInvestmentAdvice(String query) async {
+    final response = await sendChatMessage(message: query);
+    return response.response;
+  }
+
+  /// Get tax advice
+  Future<String> getTaxAdvice(String query) async {
+    final response = await sendChatMessage(message: query);
+    return response.response;
   }
 
   /// Predict future spending based on historical data
   Future<Map<String, double>> predictNextMonthSpending(
     List<Transaction> transactions,
   ) async {
-    await Future.delayed(const Duration(milliseconds: 600));
-
-    final predictions = <String, double>{};
-    final categorySpending = <Category, List<double>>{};
-
-    // Group transactions by category
-    for (var transaction in transactions.where(
-      (t) => t.type == TransactionType.expense,
-    )) {
-      categorySpending.putIfAbsent(transaction.category, () => []);
-      categorySpending[transaction.category]!.add(transaction.amount);
+    if (transactions.isEmpty) {
+      return {};
     }
 
-    // Calculate average spending per category
-    for (var entry in categorySpending.entries) {
-      final average = entry.value.reduce((a, b) => a + b) / entry.value.length;
-      predictions[categoryToString(entry.key)] =
-          average * 1.05; // 5% increase prediction
-    }
+    try {
+      final expenditureData = _transactionsToExpenditureEntries(transactions);
+      final response = await sendChatMessage(
+        message: 'Predict my spending for next month based on my history',
+        expenditureData: expenditureData,
+      );
 
-    return predictions;
+      // Parse prediction from response
+      if (response.data != null) {
+        final predictions = <String, double>{};
+        if (response.data!['predictions'] != null) {
+          final predData =
+              response.data!['predictions'] as Map<String, dynamic>;
+          predData.forEach((key, value) {
+            predictions[key] = (value as num).toDouble();
+          });
+        }
+        return predictions;
+      }
+
+      return {};
+    } catch (e) {
+      debugPrint('Error predicting spending: $e');
+      return {};
+    }
+  }
+
+  /// Helper method to get insight title based on query type
+  String _getInsightTitle(String queryType) {
+    switch (queryType) {
+      case 'expenditure_analysis':
+        return '📊 Spending Analysis';
+      case 'insights_generation':
+        return '💡 AI Insight';
+      case 'tax_advice':
+        return '📋 Tax Advice';
+      case 'investment_advice':
+        return '📈 Investment Suggestion';
+      case 'revenue_analysis':
+        return '💰 Revenue Analysis';
+      default:
+        return '🤖 AI Suggestion';
+    }
+  }
+
+  /// Helper method to get insight type based on query type
+  String _getInsightType(String queryType) {
+    switch (queryType) {
+      case 'expenditure_analysis':
+        return 'tip';
+      case 'tax_advice':
+        return 'warning';
+      case 'investment_advice':
+        return 'suggestion';
+      default:
+        return 'tip';
+    }
+  }
+
+  /// Check if backend is available
+  Future<bool> checkBackendHealth() async {
+    try {
+      final response = await http
+          .get(_resolveEndpoint(AIConfig.healthEndpoint))
+          .timeout(AIConfig.healthCheckTimeout);
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Backend health check failed: $e');
+      return false;
+    }
+  }
+
+  /// Resolve endpoint URI with Android emulator localhost support
+  Uri _resolveEndpoint(String endpoint) {
+    final base = Uri.parse(_baseUrl);
+    // Map localhost to 10.0.2.2 when running on Android emulator
+    if (!kIsWeb && Platform.isAndroid) {
+      if (base.host == 'localhost' || base.host == '127.0.0.1') {
+        final fixed = base.replace(host: '10.0.2.2');
+        return fixed.replace(path: _joinPath(fixed.path, endpoint));
+      }
+    }
+    return base.replace(path: _joinPath(base.path, endpoint));
+  }
+
+  String _joinPath(String a, String b) {
+    final left = a.endsWith('/') ? a.substring(0, a.length - 1) : a;
+    final right = b.startsWith('/') ? b.substring(1) : b;
+    return '$left/$right';
   }
 }

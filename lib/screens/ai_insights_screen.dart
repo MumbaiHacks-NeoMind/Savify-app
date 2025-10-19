@@ -15,6 +15,16 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
   final TextEditingController _queryController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    // Check backend status on screen load
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final aiProvider = Provider.of<AIAgentProvider>(context, listen: false);
+      aiProvider.checkBackendStatus();
+    });
+  }
+
+  @override
   void dispose() {
     _queryController.dispose();
     super.dispose();
@@ -26,6 +36,38 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
       builder: (context, aiProvider, transactionProvider, _) {
         return Column(
           children: [
+            // Backend Status Banner
+            if (!aiProvider.isBackendAvailable)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                color: Colors.orange.shade100,
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      color: Colors.orange.shade800,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'AI Backend is offline. Some features may not work.',
+                        style: TextStyle(
+                          color: Colors.orange.shade900,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => aiProvider.checkBackendStatus(),
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.all(16),
@@ -45,34 +87,63 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      if (aiProvider.insights.isNotEmpty)
-                        TextButton(
-                          onPressed: () {
-                            showDialog(
-                              context: context,
-                              builder: (context) => AlertDialog(
-                                title: const Text('Clear Insights'),
-                                content: const Text(
-                                  'Are you sure you want to clear all insights?',
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context),
-                                    child: const Text('Cancel'),
+                      Row(
+                        children: [
+                          // Backend status indicator
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: aiProvider.isBackendAvailable
+                                  ? Colors.green
+                                  : Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            aiProvider.isBackendAvailable
+                                ? 'Online'
+                                : 'Offline',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: aiProvider.isBackendAvailable
+                                  ? Colors.green
+                                  : Colors.red,
+                            ),
+                          ),
+                          if (aiProvider.insights.isNotEmpty) ...[
+                            const SizedBox(width: 16),
+                            TextButton(
+                              onPressed: () {
+                                showDialog(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    title: const Text('Clear Insights'),
+                                    content: const Text(
+                                      'Are you sure you want to clear all insights?',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text('Cancel'),
+                                      ),
+                                      TextButton(
+                                        onPressed: () {
+                                          aiProvider.clearInsights();
+                                          Navigator.pop(context);
+                                        },
+                                        child: const Text('Clear'),
+                                      ),
+                                    ],
                                   ),
-                                  TextButton(
-                                    onPressed: () {
-                                      aiProvider.clearInsights();
-                                      Navigator.pop(context);
-                                    },
-                                    child: const Text('Clear'),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                          child: const Text('Clear All'),
-                        ),
+                                );
+                              },
+                              child: const Text('Clear All'),
+                            ),
+                          ],
+                        ],
+                      ),
                     ],
                   ),
                   const SizedBox(height: 10),
@@ -158,6 +229,30 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+                const Spacer(),
+                // Query type badge
+                if (aiProvider.lastResponse != null &&
+                    !aiProvider.isGettingAdvice)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _getQueryTypeColor(
+                        aiProvider.lastResponse!.queryType,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      _getQueryTypeDisplay(aiProvider.lastResponse!.queryType),
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: 12),
@@ -172,17 +267,28 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
                 fillColor: Colors.white,
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.send),
-                  onPressed: () {
+                  onPressed: () async {
                     if (_queryController.text.isNotEmpty) {
-                      aiProvider.getAdvice(
-                        _queryController.text,
-                        transactionProvider.transactions,
-                      );
+                      final query = _queryController.text;
                       _queryController.clear();
+
+                      await aiProvider.sendMessage(
+                        message: query,
+                        transactions: transactionProvider.transactions,
+                      );
                     }
                   },
                 ),
               ),
+              onSubmitted: (value) async {
+                if (value.isNotEmpty) {
+                  await aiProvider.sendMessage(
+                    message: value,
+                    transactions: transactionProvider.transactions,
+                  );
+                  _queryController.clear();
+                }
+              },
             ),
             if (aiProvider.isGettingAdvice)
               const Padding(
@@ -206,13 +312,85 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: aiProvider.lastResponse?.hasError == true
+                        ? Colors.red.shade200
+                        : Colors.grey.shade300,
+                  ),
                 ),
-                child: Text(aiProvider.lastAdvice),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (aiProvider.lastResponse?.hasError == true)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.error_outline,
+                              color: Colors.red.shade700,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Error',
+                              style: TextStyle(
+                                color: Colors.red.shade700,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    Text(aiProvider.lastAdvice),
+                  ],
+                ),
               ),
           ],
         ),
       ),
     );
+  }
+
+  Color _getQueryTypeColor(String queryType) {
+    switch (queryType) {
+      case 'expenditure_analysis':
+        return Colors.blue;
+      case 'insights_generation':
+        return Colors.purple;
+      case 'tax_advice':
+        return Colors.orange;
+      case 'investment_advice':
+        return Colors.green;
+      case 'revenue_analysis':
+        return Colors.teal;
+      case 'error':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _getQueryTypeDisplay(String queryType) {
+    switch (queryType) {
+      case 'expenditure_analysis':
+        return 'Spending';
+      case 'insights_generation':
+        return 'Insights';
+      case 'tax_advice':
+        return 'Tax';
+      case 'investment_advice':
+        return 'Investment';
+      case 'revenue_analysis':
+        return 'Revenue';
+      case 'general_chat':
+        return 'Chat';
+      case 'error':
+        return 'Error';
+      default:
+        return queryType;
+    }
   }
 
   Widget _buildInsightCard(
