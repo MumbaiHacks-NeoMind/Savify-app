@@ -89,3 +89,5 @@ flutter_*.png
 *.bak
 
 .flutter-plugins-dependencies
+
+AUTHENTICATION.md

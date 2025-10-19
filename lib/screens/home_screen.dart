@@ -5,6 +5,7 @@ import '../providers/ai_agent_provider.dart';
 import 'transactions_screen.dart';
 import 'ai_insights_screen.dart';
 import 'add_transaction_screen.dart';
+import 'profile_screen.dart';
 import '../widgets/balance_card.dart';
 import '../widgets/quick_stats.dart';
 import '../widgets/recent_transactions.dart';
@@ -39,6 +40,8 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  // Logout handled in ProfileScreen
+
   @override
   Widget build(BuildContext context) {
     final List<Widget> screens = [
@@ -49,7 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('savify'),
+        title: const Text('SAVIFY'),
         elevation: 0,
         actions: [
           Consumer<AIAgentProvider>(
@@ -88,6 +91,23 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                 ],
+              );
+            },
+          ),
+          IconButton(
+            icon: CircleAvatar(
+              backgroundColor: Theme.of(
+                context,
+              ).colorScheme.primary.withOpacity(0.1),
+              child: Icon(
+                Icons.person_outline,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const ProfileScreen()),
               );
             },
           ),
